@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>C2会员管理系统</title>
+    
+    <!-- Error Handling -->
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var root = document.getElementById('root');
+        if (root) {
+          var displayMsg = msg;
+          if (error && error.message) displayMsg = error.message;
+          
+          root.innerHTML = '<div style="color:#ef4444; padding:20px; font-family:sans-serif;">' +
+            '<h3 style="font-size:1.5rem; font-weight:bold; margin-bottom:10px;">Application Error</h3>' +
+            '<p style="background:#fee2e2; padding:10px; border-radius:8px;">' + displayMsg + '</p>' +
+            '<p style="color:#666; margin-top:10px; font-size:0.9rem;">Line: ' + line + '</p>' +
+            '</div>';
+        }
+        console.error(error || msg);
+        return false;
+      };
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'Microsoft YaHei', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-out forwards',
+              'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-in-right': 'slideInRight 0.3s ease-out forwards',
+              'slide-in-left': 'slideInLeft 0.3s ease-out forwards',
+              'bounce-small': 'bounceSmall 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              scaleIn: {
+                '0%': { opacity: '0', transform: 'scale(0.95)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              slideInRight: {
+                '0%': { opacity: '0', transform: 'translateX(20px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              slideInLeft: {
+                '0%': { opacity: '0', transform: 'translateX(-20px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              bounceSmall: {
+                '0%': { transform: 'scale(0.9)' },
+                '50%': { transform: 'scale(1.05)' },
+                '100%': { transform: 'scale(1)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .dark ::-webkit-scrollbar-thumb { background: #475569; }
+      .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1",
+        "uuid": "https://esm.sh/uuid@9.0.0",
+        "date-fns": "https://esm.sh/date-fns@2.30.0"
+      }
+    }
+    </script>
+</head>
+<body class="bg-gray-100 dark:bg-slate-950 text-gray-900 dark:text-white antialiased overflow-hidden select-none">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, createContext, useContext } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import { 
+            Users, CreditCard, Wallet, Settings, ArrowRight, Lock, 
+            Search, Plus, Trash2, X, User, Calendar, Cake, 
+            Delete, Check, CheckCircle, AlertCircle, Info, AlertTriangle,
+            LogOut, UserCircle, Store, Sparkles, ChevronRight, Receipt, Moon, Sun, 
+            RotateCcw, UserX, Database, ArrowLeft, Shield, Palette, Home
+        } from 'lucide-react';
+        import { v4 as uuidv4 } from 'uuid';
+        import { format } from 'date-fns';
+
+        // -------------------------
+        // 1. STORAGE UTILS
+        // -------------------------
+        const MEMBERS_KEY = 'c2_members';
+        const SETTINGS_KEY = 'c2_settings';
+        const USER_KEY = 'c2_user_info';
+        const LOCKED_STATE_KEY = 'c2_locked_state';
+
+        const getMembers = () => {
+            try {
+                const data = localStorage.getItem(MEMBERS_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (e) {
+                console.error('Failed to load members', e);
+                return [];
+            }
+        };
+
+        const saveMembers = (members) => {
+            localStorage.setItem(MEMBERS_KEY, JSON.stringify(members));
+        };
+
+        const getSettings = () => {
+            try {
+                const data = localStorage.getItem(SETTINGS_KEY);
+                return data ? JSON.parse(data) : {
+                    pinCode: null,
+                    enableStartupLock: false,
+                    theme: 'light',
+                };
+            } catch (e) {
+                return {
+                    pinCode: null,
+                    enableStartupLock: false,
+                    theme: 'light',
+                };
+            }
+        };
+
+        const saveSettings = (settings) => {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        };
+
+        const getUser = () => {
+            try {
+                const data = localStorage.getItem(USER_KEY);
+                return data ? JSON.parse(data) : null;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const saveUser = (user) => {
+            localStorage.setItem(USER_KEY, JSON.stringify(user));
+        };
+
+        const getLockedState = () => {
+            return localStorage.getItem(LOCKED_STATE_KEY) === 'true';
+        };
+
+        const setLockedState = (locked) => {
+            if (locked) {
+                localStorage.setItem(LOCKED_STATE_KEY, 'true');
+            } else {
+                localStorage.removeItem(LOCKED_STATE_KEY);
+            }
+        };
+
+        const clearAllData = () => {
+            localStorage.removeItem(MEMBERS_KEY);
+            localStorage.removeItem(SETTINGS_KEY);
+            localStorage.removeItem(USER_KEY);
+            localStorage.removeItem(LOCKED_STATE_KEY);
+        };
+
+        const clearMembers = () => {
+            localStorage.removeItem(MEMBERS_KEY);
+        };
+
+        const clearUserInfo = () => {
+            localStorage.removeItem(USER_KEY);
+        };
+
+        // -------------------------
+        // 2. UI CONTEXT
+        // -------------------------
+        const UIContext = createContext(undefined);
+
+        const useUI = () => {
+            const context = useContext(UIContext);
+            if (!context) {
+                throw new Error('useUI must be used within a UIProvider');
+            }
+            return context;
+        };
+
+        const UIProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const [dialog, setDialog] = useState(null);
+
+            const toast = (message, type = 'info') => {
+                const id = uuidv4();
+                setToasts((prev) => [...prev, { id, type, message }]);
+                setTimeout(() => {
+                    setToasts((prev) => prev.filter((t) => t.id !== id));
+                }, 3000);
+            };
+
+            const confirm = (options) => {
+                setDialog(options);
+            };
+
+            const handleConfirm = () => {
+                if (dialog?.onConfirm) dialog.onConfirm();
+                setDialog(null);
+            };
+
+            const handleCancel = () => {
+                if (dialog?.onCancel) dialog.onCancel();
+                setDialog(null);
+            };
+
+            return (
+                <UIContext.Provider value={{ toast, confirm }}>
+                    {children}
+                    {/* Toast Container */}
+                    <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] flex flex-col gap-3 w-full max-w-sm pointer-events-none px-4">
+                        {toasts.map((t) => (
+                            <div
+                                key={t.id}
+                                className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg shadow-gray-200/50 dark:shadow-black/30 border animate-slide-up ${
+                                    t.type === 'success' 
+                                        ? 'bg-white dark:bg-slate-800 border-green-500/50 text-green-700 dark:text-green-400'
+                                        : t.type === 'error'
+                                        ? 'bg-white dark:bg-slate-800 border-red-500/50 text-red-700 dark:text-red-400'
+                                        : 'bg-white dark:bg-slate-800 border-blue-500/50 text-blue-700 dark:text-blue-400'
+                                }`}
+                            >
+                                {t.type === 'success' && <CheckCircle size={20} className="shrink-0" />}
+                                {t.type === 'error' && <AlertCircle size={20} className="shrink-0" />}
+                                {t.type === 'info' && <Info size={20} className="shrink-0" />}
+                                <span className="font-medium text-sm dark:text-gray-100">{t.message}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Confirm Dialog Overlay */}
+                    {dialog && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+                            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-scale-in border border-gray-100 dark:border-slate-700">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto ${
+                                    dialog.type === 'danger' ? 'bg-red-100 text-red-600 dark:bg-red-900/30' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30'
+                                }`}>
+                                    {dialog.type === 'danger' ? <AlertTriangle size={24} /> : <Info size={24} />}
+                                </div>
+                                
+                                <h3 className="text-xl font-bold text-center text-gray-800 dark:text-white mb-2">
+                                    {dialog.title}
+                                </h3>
+                                <p className="text-center text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+                                    {dialog.message}
+                                </p>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleCancel}
+                                        className="flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+                                    >
+                                        {dialog.cancelText || '取消'}
+                                    </button>
+                                    <button
+                                        onClick={handleConfirm}
+                                        className={`flex-1 px-4 py-3 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${
+                                            dialog.type === 'danger' 
+                                            ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' 
+                                            : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'
+                                        }`}
+                                    >
+                                        {dialog.confirmText || '确认'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </UIContext.Provider>
+            );
+        };
+
+        // -------------------------
+        // 3. COMPONENTS
+        // -------------------------
+        
+        // --- VirtualKeypad ---
+        const VirtualKeypad = ({ 
+            value, 
+            onChange, 
+            onConfirm, 
+            label = "请输入金额",
+            confirmLabel = "确认",
+            isPassword = false
+        }) => {
+            const handleNumClick = (num) => {
+                if (isPassword && value.length >= 4) return;
+                if (num === '.' && value.includes('.')) return;
+                if (num === '.' && value === '') {
+                    onChange('0.');
+                    return;
+                }
+                if (value === '0' && num !== '.') {
+                    onChange(num);
+                    return;
+                }
+                onChange(value + num);
+            };
+
+            const handleBackspace = () => {
+                onChange(value.slice(0, -1));
+            };
+
+            const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'];
+
+            return (
+                <div className="flex flex-col gap-6 w-full max-w-[400px] mx-auto p-8 bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-slate-700">
+                    <div className="text-center mb-4">
+                        <label className="text-sm text-gray-500 dark:text-gray-400 font-medium tracking-wide uppercase">{label}</label>
+                        <div className="text-5xl font-bold text-gray-800 dark:text-white mt-3 h-16 flex items-center justify-center tracking-[0.2em] font-mono">
+                            {isPassword ? '•'.repeat(value.length) : (value || '0')}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                        {keys.map((key) => (
+                            <button
+                                key={key}
+                                onClick={() => handleNumClick(key)}
+                                className="h-20 rounded-2xl bg-gray-50 dark:bg-slate-700/50 text-3xl font-medium text-gray-700 dark:text-gray-200 hover:bg-white hover:shadow-lg dark:hover:bg-slate-600 active:scale-95 transition-all duration-200 border border-transparent hover:border-gray-200 dark:hover:border-slate-500"
+                            >
+                                {key}
+                            </button>
+                        ))}
+                        <button
+                            onClick={handleBackspace}
+                            className="h-20 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/40 active:scale-95 transition-all duration-200"
+                        >
+                            <Delete size={32} />
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={onConfirm}
+                        disabled={!value || (isPassword && value.length !== 4)}
+                        className="w-full mt-4 h-20 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-400 dark:disabled:from-slate-700 dark:disabled:to-slate-800 disabled:cursor-not-allowed text-white text-2xl font-bold flex items-center justify-center gap-3 active:scale-[0.98] transition-all shadow-xl shadow-blue-500/20"
+                    >
+                        <Check size={32} />
+                        {confirmLabel}
+                    </button>
+                </div>
+            );
+        };
+
+        // --- LockScreen ---
+        const LockScreen = ({ pin, onUnlock }) => {
+            const [input, setInput] = useState('');
+            const [error, setError] = useState(false);
+
+            const handleConfirm = () => {
+                if (input === pin) {
+                    onUnlock();
+                } else {
+                    setError(true);
+                    setInput('');
+                    setTimeout(() => setError(false), 500);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 bg-gray-100 dark:bg-slate-900 flex flex-col items-center justify-center p-4">
+                    <div className={`transition-transform duration-300 ${error ? 'translate-x-[-10px] animate-pulse' : ''}`}>
+                        <div className="flex justify-center mb-6">
+                            <div className="p-6 bg-white dark:bg-slate-800 rounded-full shadow-2xl">
+                                <Lock size={48} className="text-blue-600 dark:text-blue-400" />
+                            </div>
+                        </div>
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white text-center mb-8">
+                            C2 会员管理系统已锁定
+                        </h1>
+                        <VirtualKeypad
+                            value={input}
+                            onChange={(v) => {
+                                if (v.length <= 4) setInput(v);
+                                setError(false);
+                            }}
+                            onConfirm={handleConfirm}
+                            label={error ? "密码错误，请重试" : "请输入4位密码解锁"}
+                            confirmLabel="解锁"
+                            isPassword={true}
+                        />
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Onboarding ---
+        const Onboarding = ({ onComplete }) => {
+            const [step, setStep] = useState(1);
+            const [type, setType] = useState(null);
+            const [name, setName] = useState('');
+
+            const handleComplete = () => {
+                if (type && name) {
+                    onComplete({
+                        type,
+                        name,
+                        joinedAt: new Date().toISOString()
+                    });
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[100] bg-white dark:bg-slate-950 flex flex-col items-center justify-center p-6 animate-fade-in">
+                    <div className="max-w-md w-full">
+                        {step === 1 && (
+                            <div className="animate-slide-up">
+                                <h2 className="text-3xl font-bold text-center mb-2 text-gray-900 dark:text-white">欢迎使用 C2</h2>
+                                <p className="text-gray-500 text-center mb-8">首先，请选择您的使用类型</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div 
+                                        onClick={() => setType('personal')} 
+                                        className={`cursor-pointer p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 active:scale-95 ${type === 'personal' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md' : 'border-gray-200 dark:border-slate-700 hover:border-blue-300'}`}
+                                    >
+                                        <UserCircle size={48} className={type === 'personal' ? 'text-blue-600' : 'text-gray-400'} />
+                                        <span className={`font-bold ${type === 'personal' ? 'text-blue-600' : 'text-gray-500'}`}>个人使用</span>
+                                    </div>
+                                    <div 
+                                        onClick={() => setType('business')} 
+                                        className={`cursor-pointer p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 active:scale-95 ${type === 'business' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md' : 'border-gray-200 dark:border-slate-700 hover:border-blue-300'}`}
+                                    >
+                                        <Store size={48} className={type === 'business' ? 'text-blue-600' : 'text-gray-400'} />
+                                        <span className={`font-bold ${type === 'business' ? 'text-blue-600' : 'text-gray-500'}`}>商铺管理</span>
+                                    </div>
+                                </div>
+                                <button 
+                                    disabled={!type} 
+                                    onClick={() => setStep(2)} 
+                                    className="w-full mt-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 transition-all active:scale-95"
+                                >
+                                    下一步
+                                </button>
+                            </div>
+                        )}
+                        {step === 2 && (
+                            <div className="animate-slide-up">
+                                <h2 className="text-3xl font-bold text-center mb-2 text-gray-900 dark:text-white">怎么称呼您？</h2>
+                                <p className="text-gray-500 text-center mb-8">我们将为您定制个性化主页</p>
+                                <div className="bg-gray-100 dark:bg-slate-800 p-6 rounded-2xl animate-scale-in">
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">管理用户名</label>
+                                    <input 
+                                        autoFocus 
+                                        type="text" 
+                                        value={name} 
+                                        onChange={(e) => setName(e.target.value)} 
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white text-lg outline-none focus:ring-2 focus:ring-blue-500 transition-shadow" 
+                                        placeholder={type === 'business' ? "例如：李店长" : "例如：管理员"} 
+                                    />
+                                </div>
+                                <div className="flex gap-4 mt-8">
+                                    <button onClick={() => setStep(1)} className="flex-1 bg-gray-200 dark:bg-slate-800 text-gray-600 dark:text-white py-4 rounded-xl font-bold hover:bg-gray-300 dark:hover:bg-slate-700 transition-colors">上一步</button>
+                                    <button disabled={!name.trim()} onClick={() => setStep(3)} className="flex-[2] bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95">确认</button>
+                                </div>
+                            </div>
+                        )}
+                        {step === 3 && (
+                            <div className="animate-slide-up">
+                                <div className="flex justify-center mb-6">
+                                    <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center text-green-600 animate-bounce-small">
+                                        <Sparkles size={40} />
+                                    </div>
+                                </div>
+                                <h2 className="text-3xl font-bold text-center mb-4 text-gray-900 dark:text-white">准备就绪！</h2>
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm space-y-4 mb-8 border border-gray-100 dark:border-slate-700">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold">1</div>
+                                        <p className="dark:text-gray-300">在 <span className="font-bold">会员管理</span> 添加您的第一位会员</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold">2</div>
+                                        <p className="dark:text-gray-300">使用 <span className="font-bold">会员消费</span> 快速扣款（支持触屏）</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center font-bold">3</div>
+                                        <p className="dark:text-gray-300">点击 <span className="font-bold">退出全屏</span> 可最小化软件</p>
+                                    </div>
+                                </div>
+                                <button onClick={handleComplete} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition-all active:scale-95">
+                                    开始使用 <ChevronRight size={20} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // -------------------------
+        // 4. VIEWS
+        // -------------------------
+
+        // --- HomeDashboard ---
+        const HomeDashboard = ({ onNavigate, user, onLock, hasPin }) => {
+            const handleLockClick = () => {
+                if (hasPin) {
+                    onLock();
+                } else {
+                    onNavigate('settings');
+                }
+            };
+
+            return (
+                <div className="h-full flex flex-col p-8 animate-in fade-in duration-500 overflow-y-auto">
+                    <div className="mb-8 pl-2">
+                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">你好呀！{user ? user.name : '管理员'}</h2>
+                        <p className="text-gray-500 mt-1">欢迎回来，今天想做点什么？</p>
+                    </div>
+
+                    <div className="flex-1 flex items-center justify-center pb-10">
+                        <div className="max-w-6xl w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div
+                                onClick={() => onNavigate('members')}
+                                className="group bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer border-2 border-transparent hover:border-blue-500 relative overflow-hidden flex flex-col justify-between h-64"
+                            >
+                                <div className="absolute -top-6 -right-6 p-8 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity">
+                                    <Users size={160} className="text-blue-500" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-md shadow-blue-500/20">
+                                        <Users size={28} />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">会员管理</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">添加新会员、查询信息、删除会员及查看消费记录。</p>
+                                </div>
+                                <span className="relative z-10 inline-flex items-center text-blue-600 dark:text-blue-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    进入管理 <ArrowRight size={20} className="ml-2" />
+                                </span>
+                            </div>
+
+                            <div
+                                onClick={() => onNavigate('consume')}
+                                className="group bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer border-2 border-transparent hover:border-red-500 relative overflow-hidden flex flex-col justify-between h-64"
+                            >
+                                <div className="absolute -top-6 -right-6 p-8 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity">
+                                    <CreditCard size={160} className="text-red-500" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center text-red-600 dark:text-red-400 mb-4 group-hover:bg-red-600 group-hover:text-white transition-colors shadow-md shadow-red-500/20">
+                                        <CreditCard size={28} />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">会员消费</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">快速查找会员并进行消费扣款操作，支持虚拟键盘。</p>
+                                </div>
+                                <span className="relative z-10 inline-flex items-center text-red-600 dark:text-red-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    立即消费 <ArrowRight size={20} className="ml-2" />
+                                </span>
+                            </div>
+
+                            <div
+                                onClick={() => onNavigate('recharge')}
+                                className="group bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer border-2 border-transparent hover:border-green-500 relative overflow-hidden flex flex-col justify-between h-64"
+                            >
+                                <div className="absolute -top-6 -right-6 p-8 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity">
+                                    <Wallet size={160} className="text-green-500" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center text-green-600 dark:text-green-400 mb-4 group-hover:bg-green-600 group-hover:text-white transition-colors shadow-md shadow-green-500/20">
+                                        <Wallet size={28} />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">充值余额</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">为会员账户充值增加余额，支持实时查询。</p>
+                                </div>
+                                <span className="relative z-10 inline-flex items-center text-green-600 dark:text-green-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    会员充值 <ArrowRight size={20} className="ml-2" />
+                                </span>
+                            </div>
+
+                            <div
+                                onClick={handleLockClick}
+                                className={`group bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer border-2 border-transparent ${hasPin ? 'hover:border-indigo-500' : 'hover:border-orange-500'} relative overflow-hidden flex flex-col justify-between h-64`}
+                            >
+                                <div className="absolute -top-6 -right-6 p-8 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity">
+                                    <Lock size={160} className={hasPin ? "text-indigo-500" : "text-orange-500"} />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-colors shadow-md ${hasPin ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 shadow-indigo-500/20' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 group-hover:bg-orange-600 shadow-orange-500/20'} group-hover:text-white`}>
+                                        <Lock size={28} />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
+                                        {hasPin ? '立即锁定' : '设置安全锁'}
+                                    </h3>
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+                                        {hasPin ? '暂时离开？点击此处立即锁定系统屏幕，保护数据隐私。' : '您尚未设置密码。设置后可使用锁定功能保护数据。'}
+                                    </p>
+                                </div>
+                                <span className={`relative z-10 inline-flex items-center font-bold group-hover:translate-x-2 transition-transform ${hasPin ? 'text-indigo-600 dark:text-indigo-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                    {hasPin ? '锁定屏幕' : '去设置'} <ArrowRight size={20} className="ml-2" />
+                                </span>
+                            </div>
+
+                            <div
+                                onClick={() => onNavigate('settings')}
+                                className="group bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all cursor-pointer border-2 border-transparent hover:border-gray-500 relative overflow-hidden flex flex-col justify-between h-64 md:col-span-2 lg:col-span-2"
+                            >
+                                <div className="absolute -top-10 -right-10 p-8 opacity-5 dark:opacity-10 group-hover:opacity-10 dark:group-hover:opacity-20 transition-opacity">
+                                    <Settings size={200} className="text-gray-500" />
+                                </div>
+                                <div className="relative z-10">
+                                    <div className="w-14 h-14 bg-gray-100 dark:bg-gray-700/50 rounded-2xl flex items-center justify-center text-gray-600 dark:text-gray-400 mb-4 group-hover:bg-gray-600 group-hover:text-white transition-colors shadow-md shadow-gray-500/20">
+                                        <Settings size={28} />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">系统设置</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed max-w-md">管理密码、自动锁定时间、主题外观以及数据重置选项。</p>
+                                </div>
+                                <span className="relative z-10 inline-flex items-center text-gray-600 dark:text-gray-400 font-bold group-hover:translate-x-2 transition-transform">
+                                    打开设置 <ArrowRight size={20} className="ml-2" />
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- NavButton ---
+        const NavButton = ({ active, onClick, icon, label }) => (
+            <button
+                onClick={onClick}
+                className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-200 group relative overflow-hidden ${
+                    active ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800'
+                }`}
+            >
+                <span className="relative z-10 flex items-center gap-4 justify-center md:justify-start w-full">
+                    {icon}
+                    <span className="hidden md:block font-semibold">{label}</span>
+                </span>
+            </button>
+        );
+
+        // --- MemberManager ---
+        const MemberManager = ({ members, onAddMember, onDeleteMember }) => {
+            const { toast, confirm } = useUI();
+            const [searchTerm, setSearchTerm] = useState('');
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [selectedMember, setSelectedMember] = useState(null);
+            
+            // New Member State
+            const [newName, setNewName] = useState('');
+            const [newPhone, setNewPhone] = useState('');
+            const [newBirthday, setNewBirthday] = useState('');
+
+            // Transaction Filter State
+            const [filterStartDate, setFilterStartDate] = useState('');
+            const [filterEndDate, setFilterEndDate] = useState('');
+
+            const filteredMembers = members.filter((m) => 
+                m.name.includes(searchTerm) || m.phone.includes(searchTerm)
+            );
+
+            const isBirthdayToday = (birthday) => {
+                if (!birthday) return false;
+                const today = format(new Date(), 'MM-dd');
+                const birthDate = birthday.substring(5); // Extract MM-DD from YYYY-MM-DD
+                return today === birthDate;
+            };
+
+            const handleAddSubmit = (e) => {
+                e.preventDefault();
+                if (newName && newPhone) {
+                    onAddMember(newName, newPhone, newBirthday || undefined);
+                    toast(`成功添加会员：${newName}`, 'success');
+                    setNewName('');
+                    setNewPhone('');
+                    setNewBirthday('');
+                    setShowAddModal(false);
+                }
+            };
+
+            const handleDeleteRequest = () => {
+                if (!selectedMember) return;
+                
+                confirm({
+                    title: '删除会员',
+                    message: `您确定要永久删除会员 ${selectedMember.name} 吗？此操作无法撤销，所有余额和记录将一并删除。`,
+                    type: 'danger',
+                    confirmText: '确认删除',
+                    onConfirm: () => {
+                        onDeleteMember(selectedMember.id);
+                        toast('会员已删除', 'success');
+                        setSelectedMember(null);
+                    }
+                });
+            };
+
+            const openMemberDetails = (member) => {
+                setSelectedMember(member);
+                setFilterStartDate('');
+                setFilterEndDate('');
+            };
+
+            const getFilteredTransactions = () => {
+                if (!selectedMember) return [];
+                
+                return selectedMember.transactions.filter(t => {
+                    const txDate = new Date(t.date).getTime();
+                    const start = filterStartDate ? new Date(filterStartDate).setHours(0, 0, 0, 0) : 0;
+                    const end = filterEndDate ? new Date(filterEndDate).setHours(23, 59, 59, 999) : Infinity;
+                    return txDate >= start && txDate <= end;
+                });
+            };
+
+            return (
+                <div className="flex flex-col h-full bg-gray-50 dark:bg-slate-900/50 rounded-3xl overflow-hidden p-6 gap-6 animate-fade-in">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 animate-slide-up">
+                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">会员管理</h2>
+                        <div className="flex items-center gap-4 w-full md:w-auto">
+                            <div className="relative flex-1 md:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                <input 
+                                    type="text" 
+                                    placeholder="搜索姓名或手机号..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-slate-800 border-none shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-700 dark:text-gray-200 transition-shadow"
+                                />
+                            </div>
+                            <button 
+                                onClick={() => setShowAddModal(true)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl shadow-lg shadow-blue-600/30 font-semibold flex items-center gap-2 active:scale-95 transition-all"
+                            >
+                                <Plus size={20} />
+                                添加会员
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {filteredMembers.map((member, index) => (
+                                <div 
+                                    key={member.id}
+                                    onClick={() => openMemberDetails(member)}
+                                    className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer border border-transparent hover:border-blue-500/30 group animate-scale-in relative overflow-hidden"
+                                    style={{ animationDelay: `${index * 50}ms` }}
+                                >
+                                    {isBirthdayToday(member.birthday) && (
+                                        <div className="absolute top-0 right-0 p-2">
+                                            <div className="bg-pink-100 dark:bg-pink-900/30 text-pink-500 p-1.5 rounded-bl-xl rounded-tr-xl shadow-sm animate-pulse">
+                                                <Cake size={20} />
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-full text-blue-600 dark:text-blue-400">
+                                            <User size={24} />
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">余额</p>
+                                            <p className="text-xl font-bold text-green-600 dark:text-green-400">¥{member.balance.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                                            {member.name}
+                                            {isBirthdayToday(member.birthday) && <span className="text-xs bg-pink-500 text-white px-2 py-0.5 rounded-full">生日快乐</span>}
+                                        </h3>
+                                        <p className="text-gray-500 dark:text-gray-400 font-mono">{member.phone}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            {filteredMembers.length === 0 && (
+                                <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-400 animate-fade-in">
+                                    <Search size={48} className="mb-4 opacity-50" />
+                                    <p>未找到相关会员</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {showAddModal && (
+                        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-scale-in">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-2xl font-bold text-gray-800 dark:text-white">添加新会员</h3>
+                                    <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleAddSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">姓名</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={newName}
+                                            onChange={(e) => setNewName(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            placeholder="请输入姓名"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">手机号</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            value={newPhone}
+                                            onChange={(e) => setNewPhone(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            placeholder="请输入手机号"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">生日 (选填)</label>
+                                        <input
+                                            type="date"
+                                            value={newBirthday}
+                                            onChange={(e) => setNewBirthday(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-800 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        />
+                                    </div>
+                                    <div className="pt-4">
+                                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 active:scale-95 transition-all">
+                                            确认添加
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedMember && (
+                        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-lg p-8 shadow-2xl max-h-[90vh] flex flex-col animate-slide-up">
+                                <div className="flex justify-between items-start mb-6">
+                                    <div>
+                                        <h3 className="text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                            {selectedMember.name}
+                                            {isBirthdayToday(selectedMember.birthday) && (
+                                                <Cake size={28} className="text-pink-500 animate-bounce" />
+                                            )}
+                                        </h3>
+                                        <p className="text-lg text-gray-500 dark:text-gray-400 mt-1 font-mono">{selectedMember.phone}</p>
+                                        {selectedMember.birthday && (
+                                            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1">
+                                                <Cake size={14} className={isBirthdayToday(selectedMember.birthday) ? "text-pink-500" : ""} />
+                                                生日: {selectedMember.birthday}
+                                                {isBirthdayToday(selectedMember.birthday) && <span className="text-pink-500 font-bold ml-2">今天是生日！</span>}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <button onClick={() => setSelectedMember(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <X size={28} />
+                                    </button>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-6 text-white mb-6 shadow-lg shadow-blue-500/20 transform transition-transform hover:scale-[1.02]">
+                                    <p className="text-blue-100 mb-1">当前余额</p>
+                                    <p className="text-4xl font-bold">¥{selectedMember.balance.toFixed(2)}</p>
+                                    <p className="text-xs text-blue-200 mt-4">注册时间: {format(new Date(selectedMember.createdAt), 'yyyy-MM-dd')}</p>
+                                </div>
+
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="font-bold text-gray-700 dark:text-gray-300">交易记录</h4>
+                                    <div className="text-xs text-gray-400 flex gap-1 items-center">
+                                        <Calendar size={14} />
+                                        <span>筛选</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex gap-3 mb-4">
+                                    <div className="flex-1">
+                                        <label className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block mb-1">开始日期</label>
+                                        <input 
+                                            type="date" 
+                                            value={filterStartDate}
+                                            onChange={(e) => setFilterStartDate(e.target.value)}
+                                            className="w-full bg-gray-50 dark:bg-slate-700 border-none rounded-lg px-2 py-1.5 text-sm text-gray-700 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block mb-1">结束日期</label>
+                                        <input 
+                                            type="date" 
+                                            value={filterEndDate}
+                                            onChange={(e) => setFilterEndDate(e.target.value)}
+                                            className="w-full bg-gray-50 dark:bg-slate-700 border-none rounded-lg px-2 py-1.5 text-sm text-gray-700 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-6 min-h-[150px]">
+                                    {getFilteredTransactions().length > 0 ? (
+                                        [...getFilteredTransactions()].reverse().map((t, idx) => (
+                                            <div key={t.id} className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-slate-700/50 animate-fade-in" style={{ animationDelay: `${idx * 30}ms` }}>
+                                                <div>
+                                                    <p className={`font-bold ${t.type === 'consume' ? 'text-red-500' : 'text-green-500'}`}>
+                                                        {t.type === 'consume' ? '消费' : '充值'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400">{format(new Date(t.date), 'MM-dd HH:mm')}</p>
+                                                </div>
+                                                <span className={`font-mono font-bold ${t.type === 'consume' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                                                    {t.type === 'consume' ? '-' : '+'}{t.amount.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center">
+                                            <p className="text-gray-400 text-center text-sm">暂无符合条件的记录</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button 
+                                    onClick={handleDeleteRequest}
+                                    className="w-full border-2 border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors mt-auto active:scale-95"
+                                >
+                                    <Trash2 size={20} />
+                                    删除会员
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- TransactionView ---
+        const TransactionView = ({ mode, members, onTransaction }) => {
+            const { toast } = useUI();
+            const [step, setStep] = useState('search');
+            const [animClass, setAnimClass] = useState('animate-fade-in'); 
+            
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedMember, setSelectedMember] = useState(null);
+            const [amount, setAmount] = useState('');
+            const [error, setError] = useState(null);
+            
+            // Result State
+            const [lastTransaction, setLastTransaction] = useState(null);
+
+            const title = mode === 'consume' ? '会员消费' : '会员充值';
+
+            const filteredMembers = searchQuery.length > 0 ? members.filter((m) => {
+                if (mode === 'consume') {
+                    return m.phone.endsWith(searchQuery);
+                }
+                return m.phone.includes(searchQuery) || m.name.includes(searchQuery);
+            }) : [];
+
+            const handleSelectMember = (member) => {
+                setSelectedMember(member);
+                setAmount('');
+                setError(null);
+                setAnimClass('animate-slide-in-right'); 
+                setStep('amount');
+            };
+
+            const handleBackToSearch = () => {
+                setAnimClass('animate-slide-in-left'); 
+                setStep('search');
+            };
+
+            const handleAmountChange = (val) => {
+                setAmount(val);
+                if (error) setError(null);
+            };
+
+            const handleConfirmTransaction = () => {
+                if (!selectedMember || !amount) return;
+                const numAmount = parseFloat(amount);
+                
+                if (mode === 'consume' && selectedMember.balance < numAmount) {
+                    const msg = `余额不足！当前余额: ¥${selectedMember.balance.toFixed(2)}`;
+                    setError(msg);
+                    toast(msg, 'error'); 
+                    return;
+                }
+
+                let newBalance = selectedMember.balance;
+                if (mode === 'consume') {
+                    newBalance -= numAmount;
+                } else {
+                    newBalance += numAmount;
+                }
+
+                setLastTransaction({
+                    member: selectedMember,
+                    deducted: numAmount,
+                    remaining: newBalance
+                });
+
+                onTransaction(selectedMember.id, numAmount);
+                toast(`${mode === 'consume' ? '消费' : '充值'}成功！`, 'success');
+                
+                setAnimClass('animate-scale-in'); 
+                setStep('result');
+            };
+
+            const reset = () => {
+                setSearchQuery('');
+                setSelectedMember(null);
+                setAmount('');
+                setError(null);
+                setLastTransaction(null);
+                setAnimClass('animate-fade-in'); 
+                setStep('search');
+            };
+
+            if (step === 'result' && lastTransaction) {
+                return (
+                    <div className={`flex flex-col items-center justify-center h-full p-8 ${animClass}`}>
+                        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center border-t-8 border-green-500">
+                            <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600 dark:text-green-400 animate-bounce-small">
+                                <Receipt size={40} />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
+                                {mode === 'consume' ? '消费成功' : '充值成功'}
+                            </h2>
+                            <div className="py-6 space-y-4">
+                                <div className="flex justify-between text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-slate-700 pb-2">
+                                    <span>会员姓名</span>
+                                    <span className="font-bold text-gray-800 dark:text-gray-200">{lastTransaction.member.name}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-slate-700 pb-2">
+                                    <span>{mode === 'consume' ? '消费金额' : '充值金额'}</span>
+                                    <span className="font-bold text-xl text-gray-800 dark:text-white">¥{lastTransaction.deducted.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-500 dark:text-gray-400 pt-2">
+                                    <span>剩余资金</span>
+                                    <span className={`font-bold text-2xl ${lastTransaction.remaining < 0 ? 'text-red-500' : 'text-blue-600'}`}>
+                                        ¥{lastTransaction.remaining.toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={reset}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl mt-4 active:scale-95 transition-all shadow-lg shadow-blue-500/30"
+                            >
+                                完成
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (step === 'amount' && selectedMember) {
+                return (
+                    <div className={`flex flex-col h-full p-4 ${animClass}`}>
+                        <button onClick={handleBackToSearch} className="flex items-center text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white mb-4 w-fit transition-colors group">
+                            <ArrowLeft className="mr-2 group-hover:-translate-x-1 transition-transform" /> 返回选择
+                        </button>
+                        <div className="flex-1 flex flex-col items-center justify-center">
+                            <div className="mb-8 text-center animate-fade-in">
+                                <h3 className="text-gray-500 dark:text-gray-400 mb-1">正在为以下用户{mode === 'consume' ? '扣费' : '充值'}</h3>
+                                <div className="text-3xl font-bold text-gray-800 dark:text-white flex items-center justify-center gap-3">
+                                    <User className="text-blue-500" />
+                                    {selectedMember.name}
+                                </div>
+                                <p className="font-mono text-gray-400 mt-1">当前余额: ¥{selectedMember.balance.toFixed(2)}</p>
+                            </div>
+                            
+                            {error && (
+                                <div className="mb-6 px-6 py-3 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-2xl font-bold flex items-center gap-2 animate-bounce shadow-sm">
+                                    <AlertTriangle size={20} />
+                                    {error}
+                                </div>
+                            )}
+
+                            <VirtualKeypad 
+                                value={amount}
+                                onChange={handleAmountChange}
+                                onConfirm={handleConfirmTransaction}
+                                label={mode === 'consume' ? '请输入消费金额' : '请输入充值金额'}
+                                confirmLabel="确认"
+                            />
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`flex flex-col h-full bg-gray-50 dark:bg-slate-900/50 rounded-3xl overflow-hidden p-8 ${animClass}`}>
+                    <h2 className="text-3xl font-bold mb-8 text-gray-800 dark:text-white flex items-center justify-between">
+                        <span className={mode === 'consume' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}>
+                            {title}
+                        </span>
+                    </h2>
+
+                    <div className="max-w-xl mx-auto w-full flex flex-col gap-6">
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                            <label className="block text-gray-600 dark:text-gray-300 font-bold mb-3">
+                                {mode === 'consume' ? '请输入会员手机号后四位' : '搜索会员 (姓名/手机号)'}
+                            </label>
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-4 text-xl font-mono rounded-xl bg-gray-100 dark:bg-slate-700 border-2 border-transparent focus:border-blue-500 outline-none transition-all dark:text-white"
+                                    placeholder={mode === 'consume' ? "例如: 8888" : "请输入..."}
+                                    maxLength={mode === 'consume' ? 4 : 20}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto min-h-[300px] bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-2">
+                            {filteredMembers.length > 0 ? (
+                                <div className="space-y-2">
+                                    {filteredMembers.map((m, idx) => (
+                                        <div 
+                                            key={m.id}
+                                            onClick={() => handleSelectMember(m)}
+                                            className="flex items-center justify-between p-4 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl cursor-pointer transition-colors group animate-fade-in"
+                                            style={{ animationDelay: `${idx * 50}ms` }}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center text-gray-500 dark:text-gray-300 group-hover:bg-blue-200 dark:group-hover:bg-blue-800 group-hover:text-blue-700 dark:group-hover:text-white transition-colors">
+                                                    <User size={20} />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-gray-800 dark:text-white">{m.name}</h4>
+                                                    <p className="font-mono text-gray-500 text-sm">{m.phone}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm text-gray-400">余额</p>
+                                                <p className="font-bold text-green-600 dark:text-green-400">¥{m.balance.toFixed(2)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-400 animate-fade-in">
+                                    <Search size={48} className="mb-4 opacity-30" />
+                                    <p>{searchQuery ? '未找到匹配会员' : '请输入搜索内容'}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- SettingsView ---
+        const SettingsView = ({ settings, onUpdateSettings }) => {
+            const { toast, confirm } = useUI();
+            const [pinMode, setPinMode] = useState('none');
+            const [tempPin, setTempPin] = useState('');
+            const [mathChallenge, setMathChallenge] = useState(null);
+            const [mathInput, setMathInput] = useState('');
+            
+            const handlePinSubmit = () => {
+                if (tempPin.length === 4) {
+                    onUpdateSettings({ ...settings, pinCode: tempPin });
+                    toast('安全密码设置成功！', 'success');
+                    setPinMode('none');
+                    setTempPin('');
+                }
+            };
+
+            const clearPin = () => {
+                onUpdateSettings({ ...settings, pinCode: null, enableStartupLock: false });
+                toast('密码已清除，安全锁已关闭', 'info');
+            };
+
+            const updateTheme = (theme) => {
+                onUpdateSettings({ ...settings, theme });
+                toast(`已切换至${theme === 'light' ? '明亮' : '暗黑'}模式`, 'success');
+            }
+
+            const handleResetAdmin = () => {
+                confirm({
+                    title: '重置管理员身份',
+                    message: '这将清除您当前的管理员昵称和类型设置，并重新进入欢迎向导。会员数据和交易记录将保留。',
+                    type: 'info',
+                    confirmText: '确认重置',
+                    cancelText: '取消',
+                    onConfirm: () => {
+                        clearUserInfo();
+                        toast('重置后请刷新网站！', 'success');
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                });
+            };
+
+            const initMathChallenge = () => {
+                const isAdd = Math.random() > 0.5;
+                const a = Math.floor(Math.random() * 50) + 10;
+                const b = Math.floor(Math.random() * 40) + 1;
+                
+                if (isAdd) {
+                    setMathChallenge({ q: `${a} + ${b} = ?`, a: a + b });
+                } else {
+                    const max = Math.max(a, b);
+                    const min = Math.min(a, b);
+                    setMathChallenge({ q: `${max} - ${min} = ?`, a: max - min });
+                }
+                setMathInput('');
+            };
+
+            const handleSubmitMath = () => {
+                if (!mathChallenge) return;
+                if (parseInt(mathInput) === mathChallenge.a) {
+                    clearMembers();
+                    setMathChallenge(null);
+                    toast('验证通过。重置后请刷新网站！', 'success');
+                    setTimeout(() => window.location.reload(), 1500); 
+                } else {
+                    toast('验证码错误，操作已取消', 'error');
+                    setMathChallenge(null);
+                }
+            };
+
+            const handleClearData = () => {
+                confirm({
+                    title: '清空会员数据库',
+                    message: '警告：此操作将永久删除所有会员及交易记录！该操作不可逆！\n点击确认后需完成数学验证。',
+                    type: 'danger',
+                    confirmText: '继续',
+                    cancelText: '取消',
+                    onConfirm: () => {
+                        initMathChallenge();
+                    }
+                });
+            };
+
+            const handleFactoryReset = () => {
+                confirm({
+                    title: '恢复出厂设置',
+                    message: '这将清除系统内所有数据（会员、设置、管理员信息）。\n系统将完全重置。',
+                    type: 'danger',
+                    confirmText: '确认重置',
+                    cancelText: '取消',
+                    onConfirm: () => {
+                        clearAllData();
+                        toast('重置后请刷新网站！', 'success');
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                });
+            };
+
+            return (
+                <div className="h-full flex flex-col bg-gray-50 dark:bg-slate-900/50 rounded-3xl p-8 overflow-y-auto animate-fade-in relative">
+                    <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-8 flex items-center gap-3 animate-slide-in-right">
+                        <Shield className="text-blue-500" />
+                        系统设置
+                    </h2>
+
+                    {pinMode === 'setup' ? (
+                        <div className="flex flex-col items-center justify-center flex-1 animate-scale-in">
+                            <h3 className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-6">设置新的4位安全密码</h3>
+                            <VirtualKeypad 
+                                value={tempPin}
+                                onChange={setTempPin}
+                                onConfirm={handlePinSubmit}
+                                confirmLabel="保存密码"
+                                isPassword={true}
+                                label="请输入数字"
+                            />
+                            <button 
+                                onClick={() => { setPinMode('none'); setTempPin(''); }}
+                                className="mt-6 text-gray-500 hover:text-gray-800 dark:text-gray-400 transition-colors"
+                            >
+                                取消
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-8 animate-slide-up pb-8">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                                        <Lock size={20} /> 安全设置
+                                    </h3>
+                                    
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+                                            <div>
+                                                <p className="font-bold text-gray-700 dark:text-gray-200">管理密码</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">当前状态: {settings.pinCode ? <span className="text-green-500 font-bold">已设置</span> : <span className="text-red-400">未设置</span>}</p>
+                                            </div>
+                                            {settings.pinCode ? (
+                                                <button onClick={clearPin} className="px-4 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium">
+                                                    清除密码
+                                                </button>
+                                            ) : (
+                                                <button onClick={() => setPinMode('setup')} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all font-bold">
+                                                    设置密码
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className={`flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl transition-opacity ${!settings.pinCode ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            <div>
+                                                <p className="font-bold text-gray-700 dark:text-gray-200">启动锁定</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">开启应用时需输入密码</p>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer"
+                                                    checked={settings.enableStartupLock}
+                                                    onChange={(e) => {
+                                                        onUpdateSettings({...settings, enableStartupLock: e.target.checked});
+                                                        if(e.target.checked) toast('启动锁定已开启', 'info');
+                                                    }}
+                                                    disabled={!settings.pinCode}
+                                                />
+                                                <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                                        <Palette size={20} /> 外观主题
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button 
+                                            onClick={() => updateTheme('light')}
+                                            className={`p-4 rounded-xl border-2 flex flex-col items-center gap-3 transition-all active:scale-95 ${settings.theme === 'light' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-slate-700 hover:border-blue-200'}`}
+                                        >
+                                            <Sun className={settings.theme === 'light' ? 'text-blue-500' : 'text-gray-400'} size={32} />
+                                            <span className={`font-bold ${settings.theme === 'light' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>明亮模式</span>
+                                            {settings.theme === 'light' && <CheckCircle size={16} className="text-blue-500" />}
+                                        </button>
+                                        <button 
+                                            onClick={() => updateTheme('dark')}
+                                            className={`p-4 rounded-xl border-2 flex flex-col items-center gap-3 transition-all active:scale-95 ${settings.theme === 'dark' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-slate-700 hover:border-blue-200'}`}
+                                        >
+                                            <Moon className={settings.theme === 'dark' ? 'text-blue-500' : 'text-gray-400'} size={32} />
+                                            <span className={`font-bold ${settings.theme === 'dark' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>暗黑模式</span>
+                                            {settings.theme === 'dark' && <CheckCircle size={16} className="text-blue-500" />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-6 rounded-2xl shadow-sm">
+                                <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-6 flex items-center gap-2">
+                                    <AlertTriangle size={20} /> 危险区域
+                                </h3>
+                                
+                                <div className="space-y-4">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-red-100 dark:border-red-900/20">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600">
+                                                <UserX size={20} />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-gray-200">重置管理员身份</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">重新设置您的昵称和使用类型，不删除会员。</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={handleResetAdmin}
+                                            className="px-4 py-2 bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-800 dark:text-white rounded-lg font-bold transition-colors text-sm whitespace-nowrap"
+                                        >
+                                            重置身份
+                                        </button>
+                                    </div>
+
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-red-100 dark:border-red-900/20">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-600">
+                                                <Database size={20} />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-gray-200">清空会员数据库</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">永久删除所有会员和消费记录。需验证。</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={handleClearData}
+                                            className="px-4 py-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded-lg font-bold transition-colors text-sm whitespace-nowrap"
+                                        >
+                                            清空数据
+                                        </button>
+                                    </div>
+
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-red-100 dark:border-red-900/20">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-400">
+                                                <RotateCcw size={20} />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-gray-200">恢复出厂设置</p>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">清除系统所有数据，完全重置。</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={handleFactoryReset}
+                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-colors text-sm whitespace-nowrap shadow-lg shadow-red-500/20"
+                                        >
+                                            全部重置
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {mathChallenge && (
+                        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-scale-in">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">安全验证</h3>
+                                    <button onClick={() => setMathChallenge(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                                <p className="text-gray-500 dark:text-gray-400 mb-4 text-center">
+                                    为防止误删，请计算以下结果：
+                                </p>
+                                <div className="bg-gray-100 dark:bg-slate-700 rounded-xl p-6 mb-6 text-center">
+                                    <span className="text-4xl font-mono font-bold text-blue-600 dark:text-blue-400 tracking-wider">
+                                        {mathChallenge.q}
+                                    </span>
+                                </div>
+                                <input
+                                    type="number"
+                                    autoFocus
+                                    placeholder="输入结果"
+                                    value={mathInput}
+                                    onChange={(e) => setMathInput(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 text-center text-xl font-bold mb-6 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                                />
+                                <button
+                                    onClick={handleSubmitMath}
+                                    disabled={!mathInput}
+                                    className="w-full bg-red-500 hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-lg shadow-red-500/30 transition-all active:scale-95"
+                                >
+                                    确认删除
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // -------------------------
+        // 6. MAIN APP
+        // -------------------------
+        const AppContent = () => {
+            const [members, setMembers] = useState([]);
+            const [settings, setSettings] = useState({
+                pinCode: null,
+                enableStartupLock: false,
+                theme: 'light'
+            });
+            const [user, setUser] = useState(null);
+            
+            const [currentView, setCurrentView] = useState('home');
+            const [isLocked, setIsLocked] = useState(false);
+            const [isInitialized, setIsInitialized] = useState(false);
+            
+            useEffect(() => {
+                const loadedMembers = getMembers();
+                const loadedSettings = getSettings();
+                const loadedUser = getUser();
+                const wasLocked = getLockedState();
+                
+                setMembers(loadedMembers);
+                setSettings(loadedSettings);
+                setUser(loadedUser);
+
+                if (loadedSettings.pinCode && (loadedSettings.enableStartupLock || wasLocked)) {
+                    setIsLocked(true);
+                }
+                
+                setIsInitialized(true);
+            }, []);
+
+            useEffect(() => { if (isInitialized) saveMembers(members); }, [members, isInitialized]);
+            useEffect(() => { if (isInitialized) saveSettings(settings); }, [settings, isInitialized]);
+            useEffect(() => { if (isInitialized && user) saveUser(user); }, [user, isInitialized]);
+
+            useEffect(() => {
+                if (settings.theme === 'dark') document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }, [settings.theme]);
+
+            useEffect(() => {
+                const requestFullscreen = () => {
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(() => {});
+                    }
+                };
+                requestFullscreen();
+                const onInteract = () => {
+                    requestFullscreen();
+                    ['click', 'touchstart', 'keydown'].forEach(e => document.removeEventListener(e, onInteract));
+                };
+                ['click', 'touchstart', 'keydown'].forEach(e => document.addEventListener(e, onInteract));
+                return () => {
+                    ['click', 'touchstart', 'keydown'].forEach(e => document.removeEventListener(e, onInteract));
+                };
+            }, []);
+
+            const addMember = (name, phone, birthday) => {
+                const newMember = {
+                    id: uuidv4(),
+                    name,
+                    phone,
+                    balance: 0,
+                    birthday,
+                    transactions: [],
+                    createdAt: new Date().toISOString()
+                };
+                setMembers(prev => [...prev, newMember]);
+            };
+
+            const deleteMember = (id) => {
+                setMembers(prev => prev.filter(m => m.id !== id));
+            };
+
+            const handleTransaction = (memberId, amount) => {
+                setMembers(prev => prev.map(m => {
+                    if (m.id === memberId) {
+                        const isConsume = currentView === 'consume';
+                        const newTx = {
+                            id: uuidv4(),
+                            type: isConsume ? 'consume' : 'recharge',
+                            amount,
+                            date: new Date().toISOString()
+                        };
+                        return {
+                            ...m,
+                            balance: isConsume ? m.balance - amount : m.balance + amount,
+                            transactions: [...m.transactions, newTx]
+                        };
+                    }
+                    return m;
+                }));
+            };
+
+            const handleExitFullScreen = () => {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            };
+
+            const handleManualLock = () => {
+                if (settings.pinCode) {
+                    setLockedState(true);
+                    setIsLocked(true);
+                }
+            };
+
+            const handleUnlock = () => {
+                setLockedState(false);
+                setIsLocked(false);
+            };
+
+            const handleOnboardingComplete = (userInfo) => {
+                setUser(userInfo);
+                saveUser(userInfo);
+            };
+
+            if (!isInitialized) return null;
+
+            if (!user) {
+                return (
+                    <div className={`h-screen w-screen bg-gray-50 dark:bg-slate-900`}>
+                        <Onboarding onComplete={handleOnboardingComplete} />
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`h-screen w-screen overflow-hidden flex bg-white dark:bg-slate-950 transition-colors duration-300`}>
+                    {isLocked && <LockScreen pin={settings.pinCode} onUnlock={handleUnlock} />}
+                    
+                    <nav className="w-24 md:w-64 bg-white dark:bg-slate-900 border-r border-gray-100 dark:border-slate-800 flex flex-col justify-between p-4 shadow-xl z-10">
+                        <div>
+                            <div className="mb-10 px-2 flex items-center gap-3 overflow-hidden">
+                                <div className="w-10 h-10 min-w-[40px] bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/30">
+                                    C2
+                                </div>
+                                <h1 className="text-xl font-bold text-gray-800 dark:text-white hidden md:block whitespace-nowrap">会员管理</h1>
+                            </div>
+                            <div className="space-y-2">
+                                <NavButton 
+                                    active={currentView === 'home'} 
+                                    onClick={() => setCurrentView('home')} 
+                                    icon={<Home size={24} />} 
+                                    label="系统主页" 
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col gap-2">
+                            {settings.pinCode && (
+                                <button 
+                                    onClick={handleManualLock}
+                                    className="flex items-center gap-4 px-4 py-3 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-xl transition-all font-medium"
+                                >
+                                    <Lock size={24} />
+                                    <span className="hidden md:block">立即锁定</span>
+                                </button>
+                            )}
+                            <button 
+                                onClick={handleExitFullScreen}
+                                className="flex items-center gap-4 px-4 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all font-medium"
+                            >
+                                <LogOut size={24} />
+                                <span className="hidden md:block">退出全屏</span>
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="flex-1 p-4 md:p-6 overflow-hidden relative">
+                        <div className="h-full w-full max-w-7xl mx-auto">
+                            {currentView === 'home' && (
+                                <HomeDashboard 
+                                    onNavigate={setCurrentView} 
+                                    user={user} 
+                                    onLock={handleManualLock} 
+                                    hasPin={!!settings.pinCode}
+                                />
+                            )}
+                            {currentView === 'members' && <MemberManager members={members} onAddMember={addMember} onDeleteMember={deleteMember} />}
+                            {(currentView === 'consume' || currentView === 'recharge') && <TransactionView mode={currentView} members={members} onTransaction={handleTransaction} />}
+                            {currentView === 'settings' && <SettingsView settings={settings} onUpdateSettings={setSettings} />}
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const App = () => {
+            return (
+                <UIProvider>
+                    <AppContent />
+                </UIProvider>
+            );
+        };
+
+        const rootElement = document.getElementById('root');
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+            <React.StrictMode>
+                <App />
+            </React.StrictMode>
+        );
+    </script>
+</body>
+</html>
